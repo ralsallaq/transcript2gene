@@ -8,10 +8,9 @@ import pandas as pd
 from Bio import Entrez
 
 
-def get_id(accession):
+def get_id(term):
     """ seaches ncbi refseq Gene database for the transcript and returns id """
     idfound = False
-    term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(accession)
     while not idfound:
         try:
 
@@ -82,7 +81,9 @@ def main():
     args_parser.add_argument('--batch_r', '-r', type=int, 
             help='the batch run number (1,2, ..., num_threads); required with --batches and must be <= num_threads', required='--batches' in sys.argv )
     args_parser.add_argument('--update', 
-            help='update transcripts to a newer version before pulling info from NCBI; defaule=False', action='store_true')
+            help='if you cannot find info for the transcript, update transcript version by 1 and try again; defaule=False', action='store_true')
+    args_parser.add_argument('--only_refseq', 
+            help='limit to genes in refseq database, this return nothing for no-refseq genes; defaule=False', action='store_true')
 
     args = args_parser.parse_args()
 
@@ -142,9 +143,11 @@ def main():
 
             updated_acc = acc[0]
 
-            num_of_tries = 0
+            term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(updated_acc) if args.only_refseq else str(updated_acc) + ' AND human'
 
-            iid = None
+            iid = get_id(term)
+
+            num_of_tries = 0
 
             while (iid is None)  and (num_of_tries < 5):
 
@@ -153,13 +156,17 @@ def main():
                 #print("the accession ", acc[0], " is updated to ", updated_acc, " before lookup", file=sys.stderr)
 
                 batch_df.loc[i, 0] = updated_acc
+                
+                term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(updated_acc) if args.only_refseq else str(updated_acc) + ' AND human'
 
-                iid = get_id(updated_acc)
+                iid = get_id(term)
 
                 num_of_tries += 1
 
 
         else:
+
+            term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(acc[0]) if args.only_refseq else str(acc[0]) + ' AND human'
 
             iid = get_id(acc[0])
 
@@ -167,7 +174,7 @@ def main():
 
             official_symbol, synonyms = fetch_data(iid)
 
-            #print(i, acc[0], official_symbol, synonyms, file=sys.stderr)
+            print(i, acc[0], official_symbol, synonyms, file=sys.stderr)
 
             batch_df.loc[i, 'Gene'] = official_symbol 
 
