@@ -8,14 +8,14 @@ import pandas as pd
 from Bio import Entrez
 
 
-def get_id(term):
+def getID(term, ncbi_db='Gene'):
     """ seaches ncbi refseq Gene database for the transcript and returns id """
     idfound = False
     while not idfound:
         try:
 
             time.sleep(8)
-            search = Entrez.esearch(term=term, db="Gene", retmode="xml")
+            search = Entrez.esearch(term=term, db=ncbi_db, retmode="xml")
             record = Entrez.read(search)
             idfound = True
 
@@ -31,30 +31,49 @@ def get_id(term):
     else:
         return None
 
-def fetch_data(iid):
+
+def fetchData(iid, ncbi_db='Gene'):
     """ uses an id to get data """
     data_fetched = False
     while not data_fetched:
         try:
             time.sleep(8)
-            fetch = Entrez.efetch(id=iid, db="Gene", retmode="xml")
+            fetch = Entrez.efetch(id=iid, db=ncbi_db, retmode="xml")
             data = Entrez.read(fetch)
             data_fetched = True
         except:
             data_fetched = False
             #print("trying again for iid", iid, " in 8''", file=sys.stderr)
             time.sleep(8)
-    official_symbol = data[0]['Entrezgene_gene']['Gene-ref']['Gene-ref_locus']
 
-    try:
+    if ncbi_db == 'Gene':
 
-        synonyms = data[0]['Entrezgene_gene']['Gene-ref']['Gene-ref_syn']
+        official_symbol = data[0]['Entrezgene_gene']['Gene-ref']['Gene-ref_locus']
 
-    except KeyError:
+        try:
+    
+            synonyms = data[0]['Entrezgene_gene']['Gene-ref']['Gene-ref_syn']
+    
+        except KeyError:
+    
+            synonyms = None
 
-        synonyms = None
+    elif ncbi_db == 'Nucleotide':
+
+        geneInfo = data[0]['GBSeq_feature-table'][1]['GBFeature_quals'][0]
+        synonymInfo = data[0]['GBSeq_feature-table'][1]['GBFeature_quals'][1]
+
+        if geneInfo['GBQualifier_name'] == 'gene': 
+            official_symbol = geneInfo['GBQualifier_value']
+        
+        if synonymInfo['GBQualifier_name'] == 'gene_synonym':
+            synonyms = synonymInfo['GBQualifier_value'] 
+        else:
+            synonyms = None
+
 
     return official_symbol, synonyms
+
 
 
 def main():
@@ -81,11 +100,19 @@ def main():
     args_parser.add_argument('--batch_r', '-r', type=int, 
             help='the batch run number (1,2, ..., num_threads); required with --batches and must be <= num_threads', required='--batches' in sys.argv )
     args_parser.add_argument('--update', 
-            help='if you cannot find info for the transcript, update transcript version by 1 and try again; defaule=False', action='store_true')
+            help='if you cannot find info for the transcript in Gene, update transcript version by 1 and try again; defaule=False', action='store_true')
     args_parser.add_argument('--only_refseq', 
             help='limit to genes in refseq database, this return nothing for no-refseq genes; defaule=False', action='store_true')
+    args_parser.add_argument('--ncbi_db', 
+            help='ncbi databse to search; default=Gene; when only_refseq is true the database is automatically set to Gene', default='Gene')
 
     args = args_parser.parse_args()
+
+    ncbi_db = args.ncbi_db
+
+    if args.only_refseq and ncbi_db != 'Gene':
+        print('setting NCBI database to Gene for refseq only records')
+        ncbi_db = 'Gene'
 
     # First handle the files
     accesssions_file = args.accessions_file
@@ -139,13 +166,14 @@ def main():
 
     for i, acc in batch_df.iterrows():
 
-        if args.update:
+        if args.update and ncbi_db == 'Gene':
 
+            #### search for versioned accession and update the version if necessary
             updated_acc = acc[0]
 
             term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(updated_acc) if args.only_refseq else str(updated_acc) + ' AND human'
 
-            iid = get_id(term)
+            iid = getID(term, ncbi_db=ncbi_db)
 
             num_of_tries = 0
 
@@ -159,26 +187,50 @@ def main():
                 
                 term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(updated_acc) if args.only_refseq else str(updated_acc) + ' AND human'
 
-                iid = get_id(term)
+                iid = getID(term, ncbi_db=ncbi_db)
 
                 num_of_tries += 1
 
 
-        else:
+        elif ncbi_db == 'Gene':
 
+            #### search of versioned accession without updating
             term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(acc[0]) if args.only_refseq else str(acc[0]) + ' AND human'
 
-            iid = get_id(acc[0])
+            iid = getID(acc[0], ncbi_db=ncbi_db)
+
+        elif ncbi_db == 'Nucleotide':
+
+            ### search for the accession without the version
+            term = str(acc[0]).split('.')[0] + ' AND human'
+
+            iid = getID(term, ncbi_db=ncbi_db)
+
+
 
         if iid:
 
-            official_symbol, synonyms = fetch_data(iid)
+            official_symbol, synonyms = fetchData(iid, ncbi_db=ncbi_db)
 
             print(i, acc[0], official_symbol, synonyms, file=sys.stderr)
 
             batch_df.loc[i, 'Gene'] = official_symbol 
 
-            batch_df.loc[i, 'Synonym'] = ";".join(synonyms) if synonyms else None
+            if isinstance(synonyms,list):
+
+                batch_df.loc[i, 'Synonym'] = ";".join(synonyms) 
+
+            elif isinstance(synonyms,str):
+
+                batch_df.loc[i, 'Synonym'] = synonyms 
+
+            elif synonyms:
+
+                batch_df.loc[i, 'Synonym'] = synonyms
+
+            else:
+
+                batch_df.loc[i, 'Synonym'] = None
 
 
     batch_df.columns = ['accession', 'gene', 'synonyms']

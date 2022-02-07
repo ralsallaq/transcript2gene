@@ -2,3 +2,9 @@ transcript2gene.sh
 README
 logging
 batches
+*_s?.py
+*.tsv
+*.sh
+consolidate_vep_transcripts.py
+logging_firstRun/
+
