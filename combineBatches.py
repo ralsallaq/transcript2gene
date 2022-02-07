@@ -13,6 +13,7 @@ def main():
     args_parser.add_argument('--batches_dir','-d', help='directory where the batches file reside', required=True)
     args_parser.add_argument('--batches_prefix','-p', help='prefix of batch files (e.g. batch_)', required=True)
     args_parser.add_argument('--out_file','-o', help='output file for combined batches', required=True)
+    args_parser.add_argument('--failedlist', '-f', help='output failed to pull transcripts', required=True)
 
     args = args_parser.parse_args()
 
@@ -21,6 +22,8 @@ def main():
     prefix = args.batches_prefix
 
     out_file = args.out_file
+
+    failedlistFile = args.failedlist
 
 
     batches = glob.glob(batch_dir+'/'+prefix+'*.tsv')
@@ -38,9 +41,9 @@ def main():
     combined.to_csv(out_file, sep="\t", header=None, index=False)
 
     ### remaining transcripts that failed
-    catchup = combined[combined['gene'].isnull()]
+    failedList = combined[combined['gene'].isnull()]
     
-    catchup[['transc']].to_csv("vep_transcripts_genes_catchup.tsv", sep="\t", header=None, index=False)
+    failedList[['transc']].to_csv(failedlistFile, sep="\t", header=None, index=False)
     
 
 if __name__ == "__main__":
