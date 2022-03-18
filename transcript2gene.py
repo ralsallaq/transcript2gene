@@ -61,16 +61,25 @@ def fetchData(iid, ncbi_db='Gene'):
     elif ncbi_db == 'Nucleotide':
 
         geneInfo = data[0]['GBSeq_feature-table'][1]['GBFeature_quals'][0]
-        synonymInfo = data[0]['GBSeq_feature-table'][1]['GBFeature_quals'][1]
+
+        try: 
+
+            synonymInfo = data[0]['GBSeq_feature-table'][1]['GBFeature_quals'][1]
+
+            if synonymInfo['GBQualifier_name'] == 'gene_synonym':
+                synonyms = synonymInfo['GBQualifier_value'] 
+            else:
+                synonyms = None
+
+        except:
+                synonyms = None
+
 
         if geneInfo['GBQualifier_name'] == 'gene': 
             official_symbol = geneInfo['GBQualifier_value']
-        
-        if synonymInfo['GBQualifier_name'] == 'gene_synonym':
-            synonyms = synonymInfo['GBQualifier_value'] 
         else:
-            synonyms = None
-
+            official_symbol = None
+        
 
     return official_symbol, synonyms
 

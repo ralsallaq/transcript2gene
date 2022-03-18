@@ -5,6 +5,8 @@ batches
 *_s?.py
 *.tsv
 *.sh
-consolidate_vep_transcripts.py
 logging_firstRun/
-
+consolidated_vep_transcripts_genes.tsv
+consolidated_vep_transcripts_genes.py
+test_geneFirst/
+test_nucleotideFirst/
