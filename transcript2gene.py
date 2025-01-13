@@ -48,6 +48,8 @@ def fetchData(iid, ncbi_db='Gene'):
 
     if ncbi_db == 'Gene':
 
+        versioned_transcript = None
+
         official_symbol = data[0]['Entrezgene_gene']['Gene-ref']['Gene-ref_locus']
 
         try:
@@ -59,6 +61,8 @@ def fetchData(iid, ncbi_db='Gene'):
             synonyms = None
 
     elif ncbi_db == 'Nucleotide':
+
+        versioned_transcript = data[0]['GBSeq_accession-version']
 
         geneInfo = data[0]['GBSeq_feature-table'][1]['GBFeature_quals'][0]
 
@@ -81,8 +85,7 @@ def fetchData(iid, ncbi_db='Gene'):
             official_symbol = None
         
 
-    return official_symbol, synonyms
-
+    return official_symbol, synonyms, versioned_transcript
 
 
 def main():
@@ -177,7 +180,7 @@ def main():
 
         if args.update and ncbi_db == 'Gene':
 
-            #### search for versioned accession and update the version if necessary
+            # Search for the supplied versioned accession and update the version if necessary
             updated_acc = acc[0]
 
             term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(updated_acc) if args.only_refseq else str(updated_acc) + ' AND human'
@@ -185,8 +188,10 @@ def main():
             iid = getID(term, ncbi_db=ncbi_db)
 
             num_of_tries = 0
+            max_num_tries = 30
 
-            while (iid is None)  and (num_of_tries < 5):
+            # For a number of tries add 1 to version and search
+            while (iid is None)  and (num_of_tries < max_num_tries) and len(acc[0].split(".")) > 1:
 
                 updated_acc = updated_acc.split(".")[0]+'.'+str(int(acc[0].split(".")[-1])+1)
 
@@ -194,7 +199,8 @@ def main():
 
                 batch_df.loc[i, 0] = updated_acc
                 
-                term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(updated_acc) if args.only_refseq else str(updated_acc) + ' AND human'
+                term = 'srcdb_refseq[property] AND "Official Symbol" AND ' + \
+                       str(updated_acc) if args.only_refseq else str(updated_acc) + ' AND human'
 
                 iid = getID(term, ncbi_db=ncbi_db)
 
@@ -203,14 +209,15 @@ def main():
 
         elif ncbi_db == 'Gene':
 
-            #### search of versioned accession without updating
-            term = 'srcdb_refseq[property] AND "Official Symbol" AND '+str(acc[0]) if args.only_refseq else str(acc[0]) + ' AND human'
+            # Search for the supplied versioned accession as is without updating
+            term = 'srcdb_refseq[property] AND "Official Symbol" AND ' + \
+                   str(acc[0]) if args.only_refseq else str(acc[0]) + ' AND human'
 
             iid = getID(acc[0], ncbi_db=ncbi_db)
 
         elif ncbi_db == 'Nucleotide':
 
-            ### search for the accession without the version
+            # Search for the accession and ignore the version
             term = str(acc[0]).split('.')[0] + ' AND human'
 
             iid = getID(term, ncbi_db=ncbi_db)
@@ -219,15 +226,16 @@ def main():
 
         if iid:
 
-            official_symbol, synonyms = fetchData(iid, ncbi_db=ncbi_db)
+            official_symbol, synonyms, versioned_transcript = fetchData(iid, ncbi_db=ncbi_db)
 
             print(i, acc[0], official_symbol, synonyms, file=sys.stderr)
 
             batch_df.loc[i, 'Gene'] = official_symbol 
+            batch_df.loc[i, 'Versioned_transc'] = versioned_transcript
 
             if isinstance(synonyms,list):
 
-                batch_df.loc[i, 'Synonym'] = ";".join(synonyms) 
+                batch_df.loc[i, 'Synonym'] = "|".join(synonyms).replace(' ', '')
 
             elif isinstance(synonyms,str):
 
@@ -240,9 +248,11 @@ def main():
             else:
 
                 batch_df.loc[i, 'Synonym'] = None
+        else:
+            print(f'failed to get iid for {acc[0]}')
 
 
-    batch_df.columns = ['accession', 'gene', 'synonyms']
+    batch_df.columns = ['accession', 'gene', 'synonyms', 'accession_versioned']
     batch_df.to_csv(output_file, sep="\t", index=False, header=None)
     
     
